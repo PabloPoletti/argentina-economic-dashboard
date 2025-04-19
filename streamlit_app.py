@@ -15,21 +15,51 @@ def load_metadata():
 
 @st.cache_data(show_spinner="Descargando series…")
 def fetch_series(ids: list[str], start="1980-01-01") -> pd.DataFrame:
-    """Request values for the given list of ids in a single call."""
+    """Descarga las series solicitadas; si la consulta en lote falla,
+    reintenta cada ID en forma individual."""
+
+    if not ids:
+        return pd.DataFrame()
+
+    # --- intento lote ---
     qp = {
         "ids": ",".join(ids),
         "start_date": start,
         "format": "json",
-        "limit": 20000,
+        "limit": 50000,
     }
-    url = aPI_BASE + "series?" + urllib.parse.urlencode(qp, safe=",:")
+    url = aPI_BASE + "series?" + urllib.parse.urlencode(qp, safe=",:_")
     js = requests.get(url, timeout=60).json()
-    data = js.get("data", [])
-    if not data:
-        return pd.DataFrame(index=pd.to_datetime([]))
-    df = pd.DataFrame(data, columns=["Fecha"] + ids)
-    df["Fecha"] = pd.to_datetime(df["Fecha"])
-    return df.set_index("Fecha").sort_index()
+
+    data = js.get("data")
+    if data:  #  ✅ funcionó
+        col_order = ["Fecha"] + ids
+        df = pd.DataFrame(data, columns=col_order)
+        df["Fecha"] = pd.to_datetime(df["Fecha"])
+        return df.set_index("Fecha").sort_index()
+
+    # --- lote falló: reintento ID x ID -------------------
+    frames = {}
+    for sid in ids:
+        qp_single = {
+            "ids": sid,
+            "start_date": start,
+            "format": "json",
+            "limit": 50000,
+        }
+        url_single = aPI_BASE + "series?" + urllib.parse.urlencode(qp_single, safe=",:_")
+        js_single = requests.get(url_single, timeout=60).json()
+        if "data" in js_single and js_single["data"]:
+            tmp = pd.DataFrame(js_single["data"], columns=["Fecha", sid])
+            tmp["Fecha"] = pd.to_datetime(tmp["Fecha"])
+            tmp = tmp.set_index("Fecha").sort_index()
+            frames[sid] = tmp
+    if not frames:
+        return pd.DataFrame()
+
+    df_full = pd.concat(frames.values(), axis=1)
+    df_full = df_full.reindex(sorted(df_full.columns, key=ids.index), axis=1)
+    return df_full("Fecha").sort_index()
 
 # 1. Load metadata once
 meta = load_metadata()
