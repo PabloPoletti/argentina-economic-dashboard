@@ -1,153 +1,165 @@
+##############################################################################
+# streamlit_app.py  –  abril 2025
+##############################################################################
 import streamlit as st
-import pandas as pd
-import requests, urllib.parse, re, textwrap
+import pandas as pd, requests, urllib.parse, re, datetime as dt
 
 API_BASE = "https://apis.datos.gob.ar/series/api/"
-META_URL = API_BASE + "dump/series-tiempo-metadatos.csv"
+META_URL = f"{API_BASE}dump/series-tiempo-metadatos.csv"
 
-###########################################################################
-# 1. UTILIDADES CACHÉ
-###########################################################################
+PROVINCIAS = ["Buenos Aires", "Catamarca", "Chaco", "Chubut", "Córdoba",
+              "Corrientes", "Entre Ríos", "Formosa", "Jujuy", "La Pampa",
+              "La Rioja", "Mendoza", "Misiones", "Neuquén", "Río Negro",
+              "Salta", "San Juan", "San Luis", "Santa Cruz", "Santa Fe",
+              "Santiago Del Estero", "Tierra Del Fuego", "Tucumán",
+              "Ciudad Autónoma De Buenos Aires"]
+
+##############################################################################
+# 1 ▸ utilidades cache
+##############################################################################
 @st.cache_data(show_spinner=False)
 def load_metadata():
-    """Descarga una sola vez el dump de metadatos y detecta las columnas clave."""
     meta = pd.read_csv(META_URL)
-    # columna título (puede ser serie_titulo, title_es, etc.)
+
+    # columna del título (serie_titulo o similar) → 'titulo'
     col_tit = next(c for c in meta.columns if re.search(r"titulo", c, flags=re.I))
     meta = meta.rename(columns={col_tit: "titulo"})
+
+    # título legible
+    meta["titulo_simple"] = (meta["titulo"]
+                             .str.replace(r"[_\\-]+", " ", regex=True)
+                             .str.replace(r"\\b\\d+\\b", "", regex=True)
+                             .str.title()
+                             .str.strip())
+
+    # frecuencia legible
+    freq_map = {"R/P1D": "Diaria", "R/P1M": "Mensual",
+                "R/P3M": "Trimestral", "R/P6M": "Semestral",
+                "R/P1Y": "Anual"}
+    meta["frecuencia"] = meta["indice_tiempo_frecuencia"].map(freq_map)\
+                            .fillna(meta["indice_tiempo_frecuencia"])
+
+    # último dato como datetime
+    meta["ultimo_dato"] = pd.to_datetime(meta["serie_indice_final"], errors="coerce")
+    meta = meta[meta["ultimo_dato"] >= "2023-01-01"]  # solo series “vigentes”
+
+    # ámbito: nacional vs provincia
+    def detectar_ambito(tit, dataset):
+        txt = f"{tit} {dataset}".lower()
+        for prov in PROVINCIAS:
+            if prov.lower() in txt:
+                return prov
+        if "nacion" in txt or "nacional" in txt:
+            return "Nacional"
+        return "Nacional"  # por defecto
+
+    meta["ambito"] = meta.apply(lambda r: detectar_ambito(r["titulo"], 
+                                                          r.get("dataset_titulo", "")), axis=1)
     return meta
 
 @st.cache_data(show_spinner="Descargando series…")
-def fetch_series(ids: list[str], start="1900-01-01") -> pd.DataFrame:
-    """Descarga series con paginación; evita bucle infinito si offset es ignorado."""
+def fetch_series(ids, start="1900-01-01"):
     SAFE = ",:._-"
-    out_frames = []
-
+    bloques = []
     for sid in ids:
-        frames, offset, bloq = [], 0, 1
-        prev_first_date = None
+        offset, prev_first = 0, None
         while True:
-            qp = {"ids": sid, "start_date": start, "format": "json",
-                  "limit": 5000, "offset": offset}
-            url = API_BASE + "series?" + urllib.parse.urlencode(qp, safe=SAFE)
+            qp = {"ids": sid, "start_date": start,
+                  "format": "json", "limit": 5000, "offset": offset}
+            url = f"{API_BASE}series?" + urllib.parse.urlencode(qp, safe=SAFE)
             js  = requests.get(url, timeout=60).json()
-            rows = js.get("data", [])
-            if not rows:
-                break  # sin datos o error
-            first_date = rows[0][0]
-            if first_date == prev_first_date:  # API repite bloque ↔ cortar
+            data = js.get("data", [])
+            if not data or data[0][0] == prev_first:
                 break
-            prev_first_date = first_date
-
-            blk = (pd.DataFrame(rows, columns=["Fecha", sid])
+            prev_first = data[0][0]
+            blk = (pd.DataFrame(data, columns=["Fecha", sid])
                      .assign(Fecha=lambda d: pd.to_datetime(d["Fecha"]))
                      .set_index("Fecha"))
-            frames.append(blk)
-
-            if len(rows) < 5000:
+            bloques.append(blk)
+            if len(data) < 5000:
                 break
             offset += 5000
-            bloq  += 1
-        if frames:
-            out_frames.append(pd.concat(frames))
-
-    if not out_frames:
+    if not bloques:
         return pd.DataFrame()
-    return pd.concat(out_frames, axis=1).sort_index()
+    return pd.concat(bloques, axis=1).sort_index()
 
-###########################################################################
-# 2. CARGA METADATOS
-###########################################################################
+##############################################################################
+# 2 ▸ carga metadatos
+##############################################################################
 meta = load_metadata()
 
-# Mapear códigos de frecuencia a nombres legibles
-FREQ_MAP = {
-    "R/P1D": "Diaria",
-    "R/P1M": "Mensual",
-    "R/P3M": "Trimestral",
-    "R/P6M": "Semestral",
-    "R/P1Y": "Anual",
-}
-meta["frecuencia_readable"] = meta["indice_tiempo_frecuencia"].map(FREQ_MAP).fillna(meta["indice_tiempo_frecuencia"])
+##############################################################################
+# 3 ▸ sidebar filtros
+##############################################################################
+st.sidebar.header("Filtros")
 
-###########################################################################
-# 3. SIDEBAR – NAVEGACIÓN JERÁRQUICA
-###########################################################################
-st.sidebar.header("Filtros de series económicas")
+# Ámbito nacional / provincial
+ambitos = ["Todos", "Nacional"] + PROVINCIAS
+sel_amb = st.sidebar.selectbox("Ámbito", ambitos)
+meta_a  = meta if sel_amb == "Todos" else meta[meta["ambito"] == sel_amb]
 
-# --- Nivel primario: tema del dataset ---
-if "dataset_tema" in meta.columns:
-    temas = sorted(meta["dataset_tema"].dropna().unique())
-else:
-    temas = []
-sel_tema = st.sidebar.selectbox("Tema principal", ["Todos"] + temas)
+# Tema
+temas = ["Todos"] + sorted(meta_a["dataset_tema"].dropna().unique())
+sel_tema = st.sidebar.selectbox("Tema", temas)
+meta_t = meta_a if sel_tema == "Todos" else meta_a[meta_a["dataset_tema"] == sel_tema]
 
-meta_lvl1 = meta if sel_tema == "Todos" else meta[meta["dataset_tema"] == sel_tema]
+# Organismo
+orgs = ["Todos"] + sorted(meta_t["dataset_fuente"].dropna().unique())
+sel_org = st.sidebar.selectbox("Organismo", orgs)
+meta_o  = meta_t if sel_org == "Todos" else meta_t[meta_t["dataset_fuente"] == sel_org]
 
-# --- Nivel secundario: organismo responsable ---
-if "dataset_fuente" in meta.columns:
-    orgs = sorted(meta_lvl1["dataset_fuente"].dropna().unique())
-else:
-    orgs = []
-sel_org = st.sidebar.selectbox("Organismo", ["Todos"] + orgs)
-meta_lvl2 = meta_lvl1 if sel_org == "Todos" else meta_lvl1[meta_lvl1["dataset_fuente"] == sel_org]
+# Frecuencia
+freqs = sorted(meta_o["frecuencia"].unique())
+sel_freq = st.sidebar.multiselect("Frecuencia", freqs, default=freqs)
+meta_f = meta_o[meta_o["frecuencia"].isin(sel_freq)]
 
-# --- Nivel terciario: búsqueda texto libre ---
-query = st.sidebar.text_input("Buscar palabra clave", "")
+# Búsqueda texto
+query = st.sidebar.text_input("Buscar texto")
 if query:
-    mask_txt = meta_lvl2["titulo"].str.contains(query, case=False, na=False) | \
-               meta_lvl2.get("serie_descripcion", "").str.contains(query, case=False, na=False)
-    meta_filtered = meta_lvl2[mask_txt]
-else:
-    meta_filtered = meta_lvl2
+    mask = meta_f["titulo"].str.contains(query, case=False, na=False) | \
+           meta_f.get("serie_descripcion", "").str.contains(query, case=False, na=False)
+    meta_f = meta_f[mask]
 
-# --- Filtro periodicidad ---
-sel_freq = st.sidebar.multiselect("Periodicidad", sorted(meta_filtered["frecuencia_readable"].unique()),
-                                  default=sorted(meta_filtered["frecuencia_readable"].unique()))
-meta_filtered = meta_filtered[meta_filtered["frecuencia_readable"].isin(sel_freq)]
-
-# Diccionario título -> id
-series_dict = dict(zip(meta_filtered["titulo"], meta_filtered["serie_id"]))
-
-st.sidebar.write(f"**{len(series_dict)}** series encontradas")
+# Diccionario “nombre legible” → ID
+series_dict = dict(zip(meta_f["titulo_simple"], meta_f["serie_id"]))
+st.sidebar.write(f"Series encontradas: **{len(series_dict)}**")
 sel_titles = st.sidebar.multiselect("Elige series", list(series_dict))
 sel_ids = [series_dict[t] for t in sel_titles]
 
 if not sel_ids:
-    st.info("Selecciona al menos una serie para continuar.")
+    st.info("Selecciona al menos una serie válida con datos 2023‑2025.")
     st.stop()
 
-###########################################################################
-# 4. PRESENTACIÓN
-###########################################################################
-present_opt = st.radio("Presentar como", ["Tabla", "Gráfico", "Descargar CSV"])
+##############################################################################
+# 4 ▸ presentación
+##############################################################################
+view = st.radio("Ver como", ["Tabla", "Gráfico", "Descargar CSV"])
 
-with st.spinner("Descargando datos desde la API"):
+with st.spinner("Descargando datos…"):
     df = fetch_series(sel_ids)
-    df = df.rename(columns={v: k for k, v in series_dict.items() if v in df.columns})
+    df = df.rename(columns={v: k for k, v in series_dict.items()})
 
 if df.empty:
-    st.error("No llegaron datos para las series seleccionadas.")
+    st.error("La API no devolvió valores para esas series.")
     st.stop()
 
-if present_opt == "Tabla":
+if view == "Tabla":
     st.dataframe(df)
-elif present_opt == "Gráfico":
+elif view == "Gráfico":
     st.line_chart(df)
 else:
-    st.download_button("Descargar CSV", df.to_csv().encode(), "series_seleccionadas.csv", mime="text/csv")
+    st.download_button("CSV", df.to_csv().encode(),
+                       "series_elegidas.csv", "text/csv")
 
-###########################################################################
-# 5. METADATOS DETALLADOS
-###########################################################################
-meta_sel = meta_filtered.set_index("titulo").loc[sel_titles][[
-    "frecuencia_readable", "serie_indice_inicio", "serie_indice_final",
-    "serie_descripcion" if "serie_descripcion" in meta.columns else "titulo"]]
-meta_sel = meta_sel.rename(columns={
-    "frecuencia_readable": "frecuencia",
-    "serie_indice_inicio": "primer_dato",
-    "serie_indice_final": "ultimo_dato",
-    "serie_descripcion": "descripcion"
-})
-with st.expander("Detalles de series seleccionadas"):
-    st.dataframe(meta_sel)
+##############################################################################
+# 5 ▸ metadatos detalle
+##############################################################################
+meta_det = (meta_f.set_index("titulo_simple")
+                   .loc[sel_titles,
+                        ["ambito", "frecuencia", "serie_indice_inicio",
+                         "serie_indice_final", "serie_descripcion"]]
+                   .rename(columns={"serie_indice_inicio": "primer_dato",
+                                    "serie_indice_final":  "último_dato",
+                                    "serie_descripcion":   "descripción"}))
+with st.expander("Detalles de metadatos"):
+    st.dataframe(meta_det)
