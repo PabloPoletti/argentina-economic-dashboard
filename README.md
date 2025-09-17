@@ -223,7 +223,7 @@ Este proyecto está bajo la Licencia MIT. Ver el archivo [LICENSE](LICENSE) para
 
 - **[SeriesEcon Original](https://github.com/PabloPoletti/seriesecon)** - Versión original del dashboard
 - **[Precios Argentina](https://github.com/PabloPoletti/Precios1)** - Dashboard de análisis de precios
-- **[Esperanza de Vida](https://github.com/PabloPoletti/esperanza-vida-2)** - Análisis demográfico y esperanza de vida
+- **[Esperanza de Vida](https://github.com/PabloPoletti/esperanza-vida-2)** - Análisis demográfico y esperanza de vida ([🚀 En Vivo](https://life-expectancy-dashboard.streamlit.app/))
 
 ## 🙏 Agradecimientos
 
