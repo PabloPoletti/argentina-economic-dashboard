@@ -1,4 +1,6 @@
-# 📊 SeriesEcon Dashboard
+# 📊 Argentina Economic Dashboard
+
+**🚀 [Ver Dashboard en Vivo](https://argentina-economic-dashboard.streamlit.app/)**
 
 [![Streamlit](https://img.shields.io/badge/Built%20with-Streamlit-FF6B6B?style=flat-square&logo=streamlit)](https://streamlit.io/)
 [![Python](https://img.shields.io/badge/Python-3.8+-blue?style=flat-square&logo=python)](https://python.org)
@@ -213,9 +215,15 @@ Los datos provienen de la **API oficial del Gobierno de Argentina**:
 
 Este proyecto está bajo la Licencia MIT. Ver el archivo [LICENSE](LICENSE) para más detalles.
 
-## 👥 Autores
+## 👥 Autor
 
-- **[Tu Nombre]** - *Desarrollo inicial* - [@tu-usuario](https://github.com/tu-usuario)
+- **Pablo Poletti** - *Desarrollo inicial* - [@PabloPoletti](https://github.com/PabloPoletti)
+
+## 🔗 Proyectos Relacionados
+
+- **[SeriesEcon Original](https://github.com/PabloPoletti/seriesecon)** - Versión original del dashboard
+- **[Precios Argentina](https://github.com/PabloPoletti/Precios1)** - Dashboard de análisis de precios
+- **[Esperanza de Vida](https://github.com/PabloPoletti/esperanza-vida-2)** - Análisis demográfico y esperanza de vida
 
 ## 🙏 Agradecimientos
 
@@ -226,9 +234,9 @@ Este proyecto está bajo la Licencia MIT. Ver el archivo [LICENSE](LICENSE) para
 
 ## 📞 Contacto
 
-- **Email**: tu-email@ejemplo.com
-- **LinkedIn**: [Tu Perfil](https://linkedin.com/in/tu-perfil)
-- **Twitter**: [@tu-usuario](https://twitter.com/tu-usuario)
+- **Email**: lic.poletti@gmail.com
+- **LinkedIn**: [Pablo Poletti](https://www.linkedin.com/in/pablom-poletti/)
+- **GitHub**: [@PabloPoletti](https://github.com/PabloPoletti)
 
 ---
 
@@ -236,6 +244,6 @@ Este proyecto está bajo la Licencia MIT. Ver el archivo [LICENSE](LICENSE) para
 
 **⭐ Si este proyecto te resulta útil, ¡considera darle una estrella en GitHub! ⭐**
 
-[🐛 Reportar Bug](https://github.com/tu-usuario/seriesecon/issues/new?labels=bug) | [💡 Solicitar Feature](https://github.com/tu-usuario/seriesecon/issues/new?labels=enhancement) | [📖 Documentación](https://github.com/tu-usuario/seriesecon/wiki)
+[🐛 Reportar Bug](https://github.com/PabloPoletti/argentina-economic-dashboard/issues/new?labels=bug) | [💡 Solicitar Feature](https://github.com/PabloPoletti/argentina-economic-dashboard/issues/new?labels=enhancement) | [📖 Documentación](https://github.com/PabloPoletti/argentina-economic-dashboard/wiki)
 
 </div>
